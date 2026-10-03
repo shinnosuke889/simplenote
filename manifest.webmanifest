@@ -1,0 +1,25 @@
+{
+  "id": "./",
+  "name": "Simplenote Plus",
+  "short_name": "Notes+",
+  "description": "簡潔、跨裝置同步且支援圖片的私人筆記",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2f66e9",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
