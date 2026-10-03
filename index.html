@@ -612,6 +612,7 @@
     let currentUserId = null;
     let refreshInProgress = false;
     let savedEditorRange = null;
+    let skipNextEditorBlur = false;
 
     const RICH_PREFIX = "<!--sp-rich-v1-->";
     const MEDIA_BUCKET = "note-media";
@@ -874,55 +875,71 @@
       newSelection.addRange(newRange);
     }
 
-    function captureEditorRange() {
+    function currentEditorRange() {
       const selection = window.getSelection();
-      if (!selection?.rangeCount) return;
+      if (!selection?.rangeCount) return null;
 
       const range = selection.getRangeAt(0);
       const node = range.commonAncestorContainer;
 
       if (editorContent.contains(node) || node === editorContent) {
-        savedEditorRange = range.cloneRange();
+        return range.cloneRange();
       }
+
+      return null;
     }
 
-    function restoreEditorRange() {
-      if (!savedEditorRange) return false;
+    function captureEditorRange() {
+      const range = currentEditorRange();
+      if (range) savedEditorRange = range;
+    }
+
+    function validEditorRange(range) {
+      if (!range) return false;
 
       try {
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(savedEditorRange);
-        return true;
+        const node = range.commonAncestorContainer;
+        return node === editorContent || editorContent.contains(node);
       } catch {
         return false;
       }
     }
 
-    function insertImageNode(img) {
+    function insertImageNode(img, insertionRange = null) {
       editorContent.focus();
-      const selection = window.getSelection();
 
-      if (!restoreEditorRange() || !selection?.rangeCount) {
-        editorContent.appendChild(img);
-        editorContent.appendChild(document.createElement("br"));
-      } else {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
+      let range = validEditorRange(insertionRange)
+        ? insertionRange.cloneRange()
+        : (validEditorRange(savedEditorRange) ? savedEditorRange.cloneRange() : null);
 
-        const wrapper = document.createElement("div");
-        wrapper.appendChild(img);
-        wrapper.appendChild(document.createElement("br"));
-        range.insertNode(wrapper);
+      const wrapper = document.createElement("div");
+      wrapper.appendChild(img);
+      wrapper.appendChild(document.createElement("br"));
 
+      if (!range) {
+        editorContent.appendChild(wrapper);
+        range = document.createRange();
         range.setStartAfter(wrapper);
         range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        savedEditorRange = range.cloneRange();
+      } else {
+        range.deleteContents();
+        range.insertNode(wrapper);
+
+        const afterImage = document.createRange();
+        afterImage.setStartAfter(wrapper);
+        afterImage.collapse(true);
+        range = afterImage;
       }
 
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      savedEditorRange = range.cloneRange();
       scheduleSave();
+
+      // Return the new insertion point so multiple pasted images stay in order.
+      return range.cloneRange();
     }
 
     function fileExtension(file) {
@@ -933,7 +950,7 @@
       return subtype.replace(/[^a-z0-9]/g, "") || "img";
     }
 
-    async function uploadImageFile(file) {
+    async function uploadImageFile(file, insertionRange = null) {
       const note = currentNote();
       if (!note || !currentUserId) return;
 
@@ -977,8 +994,9 @@
         img.removeAttribute("data-uploading");
       }
 
-      insertImageNode(img);
+      const nextRange = insertImageNode(img, insertionRange);
       saveStatusEl.textContent = "圖片已插入，等待儲存...";
+      return nextRange;
     }
 
     function formatDate(value) {
@@ -1429,6 +1447,7 @@
 
     imageBtn.addEventListener("mousedown", () => {
       captureEditorRange();
+      skipNextEditorBlur = true;
     });
 
     imageBtn.addEventListener("click", () => {
@@ -1440,8 +1459,12 @@
       const files = Array.from(imageInput.files ?? []);
       imageInput.value = "";
 
+      let insertionRange = validEditorRange(savedEditorRange)
+        ? savedEditorRange.cloneRange()
+        : null;
+
       for (const file of files) {
-        await uploadImageFile(file);
+        insertionRange = await uploadImageFile(file, insertionRange) ?? insertionRange;
       }
     });
 
@@ -1527,10 +1550,12 @@
 
       if (files.length) {
         event.preventDefault();
-        captureEditorRange();
+
+        let insertionRange = currentEditorRange();
+        if (insertionRange) savedEditorRange = insertionRange.cloneRange();
 
         for (const file of files) {
-          await uploadImageFile(file);
+          insertionRange = await uploadImageFile(file, insertionRange) ?? insertionRange;
         }
 
         return;
@@ -1556,6 +1581,11 @@
     });
 
     editorContent.addEventListener("blur", () => {
+      if (skipNextEditorBlur) {
+        skipNextEditorBlur = false;
+        return;
+      }
+
       // 離開編輯器時，用目前內容重新渲染一次，確保裸 URL 都成為連結。
       if (!currentNote()) return;
       const stored = serializeEditorContent();
