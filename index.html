@@ -20,7 +20,7 @@
       background: #f5f7fb;
     }
 
-    button, input, textarea { font: inherit; }
+    button, input { font: inherit; }
 
     button {
       border: 0;
@@ -322,12 +322,26 @@
       min-height: calc(100vh - 180px);
       border: 0;
       outline: 0;
-      resize: none;
       background: transparent;
       color: #1f2937;
       font-size: 17px;
       line-height: 1.65;
       padding: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    #editorContent:empty::before {
+      content: attr(data-placeholder);
+      color: #9ca3af;
+      pointer-events: none;
+    }
+
+    #editorContent a {
+      color: #2563eb;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
     }
 
     .editor-placeholder {
@@ -444,6 +458,10 @@
         color: #f9fafb;
       }
 
+      #editorContent a {
+        color: #93c5fd;
+      }
+
       .muted,
       .account-email,
       .signout-link,
@@ -523,7 +541,7 @@
 
         <div id="editorFields" style="display:none;">
           <input id="editorTitle" type="text" placeholder="標題" />
-          <textarea id="editorContent" placeholder="開始寫筆記…"></textarea>
+          <div id="editorContent" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="開始寫筆記…"></div>
         </div>
       </div>
     </section>
@@ -563,6 +581,178 @@
     let realtimeChannel = null;
     let currentUserId = null;
     let refreshInProgress = false;
+
+    const RICH_PREFIX = "<!--sp-rich-v1-->";
+
+    function escapeHtml(value = "") {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function safeHttpUrl(value = "") {
+      try {
+        const url = new URL(value);
+        return (url.protocol === "http:" || url.protocol === "https:") ? url.href : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function linkifyPlainText(value = "") {
+      const urlRegex = /https?:\/\/[^\s<>"']+/gi;
+      let result = "";
+      let lastIndex = 0;
+
+      for (const match of value.matchAll(urlRegex)) {
+        const raw = match[0];
+        const href = safeHttpUrl(raw);
+        result += escapeHtml(value.slice(lastIndex, match.index));
+
+        if (href) {
+          result += `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" contenteditable="false">${escapeHtml(raw)}</a>`;
+        } else {
+          result += escapeHtml(raw);
+        }
+
+        lastIndex = match.index + raw.length;
+      }
+
+      result += escapeHtml(value.slice(lastIndex));
+      return result;
+    }
+
+    function serializeRichNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return linkifyPlainText(node.nodeValue ?? "");
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+      const tag = node.tagName.toLowerCase();
+
+      if (tag === "br") return "<br>";
+
+      if (tag === "a") {
+        const rawHref = node.getAttribute("href") ?? node.textContent ?? "";
+        const href = safeHttpUrl(rawHref);
+        const label = node.textContent ?? rawHref;
+
+        if (!href) return linkifyPlainText(label);
+
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" contenteditable="false">${escapeHtml(label)}</a>`;
+      }
+
+      // 預留圖片節點，之後接 Supabase Storage 時可直接沿用同一個 rich-content 格式。
+      if (tag === "img") {
+        const src = safeHttpUrl(node.getAttribute("src") ?? "");
+        if (!src) return "";
+        const alt = escapeHtml(node.getAttribute("alt") ?? "");
+        return `<img src="${escapeHtml(src)}" alt="${alt}">`;
+      }
+
+      const children = Array.from(node.childNodes).map(serializeRichNode).join("");
+
+      if (tag === "div" || tag === "p") {
+        return `<div>${children || "<br>"}</div>`;
+      }
+
+      return children;
+    }
+
+    function sanitizeRichHtml(html = "") {
+      const template = document.createElement("template");
+      template.innerHTML = html;
+      return Array.from(template.content.childNodes).map(serializeRichNode).join("");
+    }
+
+    function storedContentToHtml(content = "") {
+      if (content.startsWith(RICH_PREFIX)) {
+        return sanitizeRichHtml(content.slice(RICH_PREFIX.length));
+      }
+
+      // 舊版純文字筆記相容：安全 escape 後，自動把 URL 變成連結。
+      return linkifyPlainText(content).replaceAll("\n", "<br>");
+    }
+
+    function serializeEditorContent() {
+      const html = Array.from(editorContent.childNodes).map(serializeRichNode).join("");
+      return RICH_PREFIX + html;
+    }
+
+    function plainTextFromStoredContent(content = "") {
+      if (!content.startsWith(RICH_PREFIX)) return content;
+
+      const template = document.createElement("template");
+      template.innerHTML = sanitizeRichHtml(content.slice(RICH_PREFIX.length));
+
+      function textOf(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? "";
+        if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+        const tag = node.tagName.toLowerCase();
+        if (tag === "br") return "\n";
+        if (tag === "img") return " [圖片] ";
+
+        const text = Array.from(node.childNodes).map(textOf).join("");
+        return (tag === "div" || tag === "p") ? text + "\n" : text;
+      }
+
+      return Array.from(template.content.childNodes).map(textOf).join("").replace(/\n+$/g, "");
+    }
+
+    function insertPlainTextAtSelection(text) {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    function linkifyCurrentTextNode() {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+
+      const node = selection.anchorNode;
+      if (!node || node.nodeType !== Node.TEXT_NODE || !editorContent.contains(node)) return;
+      if (node.parentElement?.closest("a")) return;
+
+      const text = node.nodeValue ?? "";
+      if (!/https?:\/\/[^\s]+/i.test(text)) return;
+
+      const caretOffset = selection.anchorOffset;
+      const beforeCaret = text.slice(0, caretOffset);
+      const linkedBeforeCaret = linkifyPlainText(beforeCaret);
+      const linkedAfterCaret = linkifyPlainText(text.slice(caretOffset));
+
+      const holder = document.createElement("span");
+      holder.innerHTML = linkedBeforeCaret + linkedAfterCaret;
+
+      const fragment = document.createDocumentFragment();
+      const nodes = Array.from(holder.childNodes);
+      nodes.forEach(child => fragment.appendChild(child));
+
+      node.parentNode.replaceChild(fragment, node);
+
+      // 將游標移到剛轉換片段的末端；URL 通常在按 Space / Enter 時完成轉換。
+      const parent = editorContent;
+      const newSelection = window.getSelection();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(parent);
+      newRange.collapse(false);
+      newSelection.removeAllRanges();
+      newSelection.addRange(newRange);
+    }
 
     function formatDate(value) {
       if (!value) return "";
@@ -631,7 +821,7 @@
       const filtered = notes.filter(note => {
         if (!q) return true;
         return (note.title ?? "").toLowerCase().includes(q) ||
-               (note.content ?? "").toLowerCase().includes(q);
+               plainTextFromStoredContent(note.content ?? "").toLowerCase().includes(q);
       });
 
       notesListEl.innerHTML = "";
@@ -653,7 +843,7 @@
 
         const preview = document.createElement("div");
         preview.className = "note-preview";
-        preview.textContent = note.content?.replace(/\s+/g, " ").trim() || "沒有內容";
+        preview.textContent = plainTextFromStoredContent(note.content ?? "").replace(/\s+/g, " ").trim() || "沒有內容";
 
         const time = document.createElement("div");
         time.className = "note-time";
@@ -677,7 +867,7 @@
       editorPlaceholder.style.display = "none";
       editorFields.style.display = "block";
       editorTitle.value = note.title ?? "";
-      editorContent.value = note.content ?? "";
+      editorContent.innerHTML = storedContentToHtml(note.content ?? "");
       editorDirty = false;
       saveStatusEl.textContent = "已載入";
       updateEditorTools(note);
@@ -741,7 +931,7 @@
 
       const noteId = note.id;
       const titleSnapshot = editorTitle.value;
-      const contentSnapshot = editorContent.value;
+      const contentSnapshot = serializeEditorContent();
       const updatedAt = new Date().toISOString();
 
       saveStatusEl.textContent = "儲存中...";
@@ -768,7 +958,7 @@
 
         editorDirty =
           selectedNoteId === noteId &&
-          (editorTitle.value !== titleSnapshot || editorContent.value !== contentSnapshot);
+          (editorTitle.value !== titleSnapshot || serializeEditorContent() !== contentSnapshot);
 
         sortNotes();
         renderNotes();
@@ -841,7 +1031,7 @@
 
         if (selectedNoteId === incoming.id && !editorDirty && !savePromise) {
           editorTitle.value = incoming.title ?? "";
-          editorContent.value = incoming.content ?? "";
+          editorContent.innerHTML = storedContentToHtml(incoming.content ?? "");
           updateEditorTools(incoming);
           saveStatusEl.textContent = "已同步";
         }
@@ -1045,6 +1235,37 @@
 
     editorTitle.addEventListener("input", scheduleSave);
     editorContent.addEventListener("input", scheduleSave);
+
+    editorContent.addEventListener("paste", (event) => {
+      event.preventDefault();
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      insertPlainTextAtSelection(text);
+      scheduleSave();
+    });
+
+    editorContent.addEventListener("keyup", (event) => {
+      if (event.key === " " || event.key === "Enter") {
+        linkifyCurrentTextNode();
+      }
+    });
+
+    editorContent.addEventListener("blur", () => {
+      // 離開編輯器時，用目前內容重新渲染一次，確保裸 URL 都成為連結。
+      if (!currentNote()) return;
+      const stored = serializeEditorContent();
+      editorContent.innerHTML = storedContentToHtml(stored);
+    });
+
+    editorContent.addEventListener("click", (event) => {
+      const link = event.target.closest?.("a");
+      if (!link) return;
+
+      const href = safeHttpUrl(link.getAttribute("href") ?? "");
+      if (!href) return;
+
+      event.preventDefault();
+      window.open(href, "_blank", "noopener,noreferrer");
+    });
 
     mobileBackBtn.addEventListener("click", async () => {
       await flushPendingSave();
