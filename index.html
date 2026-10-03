@@ -344,6 +344,19 @@
       cursor: pointer;
     }
 
+    #editorContent img {
+      display: block;
+      max-width: min(100%, 900px);
+      height: auto;
+      margin: 14px 0;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+
+    #editorContent img[data-uploading="true"] {
+      opacity: .55;
+    }
+
     .editor-placeholder {
       height: 100%;
       display: grid;
@@ -391,6 +404,19 @@
 
       .editor-topbar {
         padding: 10px 16px;
+        flex-wrap: wrap;
+      }
+
+      .editor-tools {
+        gap: 5px;
+      }
+
+      .tool-btn {
+        padding: 7px 9px;
+      }
+
+      #saveStatus {
+        font-size: 12px;
       }
 
       .editor-body {
@@ -525,10 +551,12 @@
       <div class="editor-topbar">
         <button id="mobileBackBtn" type="button">← 筆記列表</button>
         <div class="editor-tools">
+          <button id="imageBtn" class="tool-btn" type="button" style="display:none;" title="插入圖片">🖼️</button>
           <button id="pinBtn" class="tool-btn" type="button" style="display:none;">📌 置頂</button>
           <button id="deleteBtn" class="tool-btn danger" type="button" style="display:none;">刪除</button>
           <div id="saveStatus"></div>
         </div>
+        <input id="imageInput" type="file" accept="image/*" multiple hidden />
       </div>
 
       <div id="editorBody" class="editor-body">
@@ -566,6 +594,8 @@
     const notesListEl = document.getElementById("notesList");
     const saveStatusEl = document.getElementById("saveStatus");
     const mobileBackBtn = document.getElementById("mobileBackBtn");
+    const imageBtn = document.getElementById("imageBtn");
+    const imageInput = document.getElementById("imageInput");
     const pinBtn = document.getElementById("pinBtn");
     const deleteBtn = document.getElementById("deleteBtn");
     const editorPlaceholder = document.getElementById("editorPlaceholder");
@@ -581,8 +611,10 @@
     let realtimeChannel = null;
     let currentUserId = null;
     let refreshInProgress = false;
+    let savedEditorRange = null;
 
     const RICH_PREFIX = "<!--sp-rich-v1-->";
+    const MEDIA_BUCKET = "note-media";
 
     function escapeHtml(value = "") {
       return value
@@ -599,6 +631,50 @@
       } catch {
         return null;
       }
+    }
+
+    function safeStoragePath(value = "") {
+      if (!value || value.includes("..") || value.startsWith("/") || value.includes("\\")) return null;
+      if (!currentUserId) return null;
+      return value.startsWith(currentUserId + "/") ? value : null;
+    }
+
+    function storagePathsFromStoredContent(content = "") {
+      const normalized = normalizeStoredContent(content);
+      if (!normalized.startsWith(RICH_PREFIX)) return [];
+
+      const template = document.createElement("template");
+      template.innerHTML = normalized.slice(RICH_PREFIX.length);
+
+      return Array.from(template.content.querySelectorAll("img[data-storage-path]"))
+        .map(img => safeStoragePath(img.getAttribute("data-storage-path") ?? ""))
+        .filter(Boolean);
+    }
+
+    async function signedUrlForPath(path) {
+      const safePath = safeStoragePath(path);
+      if (!safePath) return null;
+
+      const { data, error } = await supabase.storage
+        .from(MEDIA_BUCKET)
+        .createSignedUrl(safePath, 3600);
+
+      if (error) return null;
+      return data?.signedUrl ?? null;
+    }
+
+    async function hydrateStorageImages(root) {
+      const images = Array.from(root.querySelectorAll("img[data-storage-path]"));
+
+      await Promise.all(images.map(async img => {
+        const path = img.getAttribute("data-storage-path") ?? "";
+        const signedUrl = await signedUrlForPath(path);
+
+        if (signedUrl) {
+          img.src = signedUrl;
+          img.removeAttribute("data-uploading");
+        }
+      }));
     }
 
     function linkifyPlainText(value = "") {
@@ -645,11 +721,16 @@
         return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" contenteditable="false">${escapeHtml(label)}</a>`;
       }
 
-      // 預留圖片節點，之後接 Supabase Storage 時可直接沿用同一個 rich-content 格式。
       if (tag === "img") {
+        const path = safeStoragePath(node.getAttribute("data-storage-path") ?? "");
+        const alt = escapeHtml(node.getAttribute("alt") ?? "");
+
+        if (path) {
+          return `<img data-storage-path="${escapeHtml(path)}" alt="${alt}">`;
+        }
+
         const src = safeHttpUrl(node.getAttribute("src") ?? "");
         if (!src) return "";
-        const alt = escapeHtml(node.getAttribute("alt") ?? "");
         return `<img src="${escapeHtml(src)}" alt="${alt}">`;
       }
 
@@ -793,6 +874,113 @@
       newSelection.addRange(newRange);
     }
 
+    function captureEditorRange() {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      const node = range.commonAncestorContainer;
+
+      if (editorContent.contains(node) || node === editorContent) {
+        savedEditorRange = range.cloneRange();
+      }
+    }
+
+    function restoreEditorRange() {
+      if (!savedEditorRange) return false;
+
+      try {
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(savedEditorRange);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function insertImageNode(img) {
+      editorContent.focus();
+      const selection = window.getSelection();
+
+      if (!restoreEditorRange() || !selection?.rangeCount) {
+        editorContent.appendChild(img);
+        editorContent.appendChild(document.createElement("br"));
+      } else {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+
+        const wrapper = document.createElement("div");
+        wrapper.appendChild(img);
+        wrapper.appendChild(document.createElement("br"));
+        range.insertNode(wrapper);
+
+        range.setStartAfter(wrapper);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        savedEditorRange = range.cloneRange();
+      }
+
+      scheduleSave();
+    }
+
+    function fileExtension(file) {
+      const namePart = (file.name ?? "").split(".").pop()?.toLowerCase() ?? "";
+      if (/^[a-z0-9]{1,8}$/.test(namePart) && namePart !== file.name?.toLowerCase()) return namePart;
+
+      const subtype = (file.type ?? "").split("/")[1]?.toLowerCase() ?? "img";
+      return subtype.replace(/[^a-z0-9]/g, "") || "img";
+    }
+
+    async function uploadImageFile(file) {
+      const note = currentNote();
+      if (!note || !currentUserId) return;
+
+      if (!file.type?.startsWith("image/")) {
+        saveStatusEl.textContent = "只能上傳圖片";
+        return;
+      }
+
+      if (file.size > 20 * 1024 * 1024) {
+        saveStatusEl.textContent = "圖片超過 20 MB";
+        return;
+      }
+
+      const ext = fileExtension(file);
+      const path = `${currentUserId}/${note.id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+
+      saveStatusEl.textContent = "圖片上傳中...";
+
+      const { error } = await supabase.storage
+        .from(MEDIA_BUCKET)
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type
+        });
+
+      if (error) {
+        saveStatusEl.textContent = "圖片上傳失敗：" + error.message;
+        return;
+      }
+
+      const img = document.createElement("img");
+      img.setAttribute("data-storage-path", path);
+      img.setAttribute("data-uploading", "true");
+      img.alt = file.name || "圖片";
+      img.contentEditable = "false";
+
+      const signedUrl = await signedUrlForPath(path);
+      if (signedUrl) {
+        img.src = signedUrl;
+        img.removeAttribute("data-uploading");
+      }
+
+      insertImageNode(img);
+      saveStatusEl.textContent = "圖片已插入，等待儲存...";
+    }
+
     function formatDate(value) {
       if (!value) return "";
       return new Intl.DateTimeFormat("zh-TW", {
@@ -816,11 +1004,13 @@
 
     function updateEditorTools(note) {
       if (!note) {
+        imageBtn.style.display = "none";
         pinBtn.style.display = "none";
         deleteBtn.style.display = "none";
         return;
       }
 
+      imageBtn.style.display = "inline-block";
       pinBtn.style.display = "inline-block";
       deleteBtn.style.display = "inline-block";
       pinBtn.classList.toggle("active", !!note.is_pinned);
@@ -907,6 +1097,7 @@
       editorFields.style.display = "block";
       editorTitle.value = note.title ?? "";
       editorContent.innerHTML = storedContentToHtml(note.content ?? "");
+      hydrateStorageImages(editorContent);
       editorDirty = false;
       saveStatusEl.textContent = "已載入";
       updateEditorTools(note);
@@ -994,6 +1185,9 @@
       const noteId = note.id;
       const titleSnapshot = editorTitle.value;
       const contentSnapshot = serializeEditorContent();
+      const oldMediaPaths = storagePathsFromStoredContent(note.content ?? "");
+      const newMediaPaths = storagePathsFromStoredContent(contentSnapshot);
+      const removedMediaPaths = oldMediaPaths.filter(path => !newMediaPaths.includes(path));
       const updatedAt = new Date().toISOString();
 
       saveStatusEl.textContent = "儲存中...";
@@ -1017,6 +1211,10 @@
 
         const index = notes.findIndex(n => n.id === data.id);
         if (index >= 0) notes[index] = data;
+
+        if (removedMediaPaths.length) {
+          supabase.storage.from(MEDIA_BUCKET).remove(removedMediaPaths).catch(() => {});
+        }
 
         editorDirty =
           selectedNoteId === noteId &&
@@ -1094,6 +1292,7 @@
         if (selectedNoteId === incoming.id && !editorDirty && !savePromise) {
           editorTitle.value = incoming.title ?? "";
           editorContent.innerHTML = storedContentToHtml(incoming.content ?? "");
+          hydrateStorageImages(editorContent);
           updateEditorTools(incoming);
           saveStatusEl.textContent = "已同步";
         }
@@ -1228,6 +1427,24 @@
 
     searchInput.addEventListener("input", renderNotes);
 
+    imageBtn.addEventListener("mousedown", () => {
+      captureEditorRange();
+    });
+
+    imageBtn.addEventListener("click", () => {
+      if (!currentNote()) return;
+      imageInput.click();
+    });
+
+    imageInput.addEventListener("change", async () => {
+      const files = Array.from(imageInput.files ?? []);
+      imageInput.value = "";
+
+      for (const file of files) {
+        await uploadImageFile(file);
+      }
+    });
+
     pinBtn.addEventListener("click", async () => {
       await flushPendingSave();
       const note = currentNote();
@@ -1266,6 +1483,8 @@
       const label = note.title?.trim() || "未命名筆記";
       if (!window.confirm(`確定要刪除「${label}」？此動作無法復原。`)) return;
 
+      const mediaPaths = storagePathsFromStoredContent(note.content ?? "");
+
       deleteBtn.disabled = true;
       saveStatusEl.textContent = "刪除中...";
 
@@ -1279,6 +1498,10 @@
       if (error) {
         saveStatusEl.textContent = "刪除失敗：" + error.message;
         return;
+      }
+
+      if (mediaPaths.length) {
+        supabase.storage.from(MEDIA_BUCKET).remove(mediaPaths).catch(() => {});
       }
 
       notes = notes.filter(n => n.id !== note.id);
@@ -1298,12 +1521,33 @@
     editorTitle.addEventListener("input", scheduleSave);
     editorContent.addEventListener("input", scheduleSave);
 
-    editorContent.addEventListener("paste", (event) => {
+    editorContent.addEventListener("paste", async (event) => {
+      const files = Array.from(event.clipboardData?.files ?? [])
+        .filter(file => file.type?.startsWith("image/"));
+
+      if (files.length) {
+        event.preventDefault();
+        captureEditorRange();
+
+        for (const file of files) {
+          await uploadImageFile(file);
+        }
+
+        return;
+      }
+
       event.preventDefault();
       const text = event.clipboardData?.getData("text/plain") ?? "";
       insertPlainTextAtSelection(text);
       scheduleSave();
     });
+
+    document.addEventListener("selectionchange", () => {
+      captureEditorRange();
+    });
+
+    editorContent.addEventListener("mouseup", captureEditorRange);
+    editorContent.addEventListener("touchend", captureEditorRange);
 
     editorContent.addEventListener("keyup", (event) => {
       if (event.key === " " || event.key === "Enter") {
@@ -1316,6 +1560,7 @@
       if (!currentNote()) return;
       const stored = serializeEditorContent();
       editorContent.innerHTML = storedContentToHtml(stored);
+      hydrateStorageImages(editorContent);
     });
 
     editorContent.addEventListener("click", (event) => {
