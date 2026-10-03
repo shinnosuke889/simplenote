@@ -269,6 +269,34 @@
       color: #6b7280;
       font-size: 13px;
       text-align: right;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
+    .editor-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .tool-btn {
+      border-radius: 9px;
+      padding: 8px 11px;
+      background: #eef2f7;
+      color: #374151;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tool-btn.active {
+      background: #dbe8ff;
+      color: #1d4ed8;
+    }
+
+    .tool-btn.danger {
+      background: #fff1f2;
+      color: #be123c;
     }
 
     .editor-body {
@@ -396,6 +424,21 @@
       .note-item:hover { background: #1d2939; }
       .note-item.active { background: #20345c; }
 
+      .tool-btn {
+        background: #263244;
+        color: #dbe3ef;
+      }
+
+      .tool-btn.active {
+        background: #274472;
+        color: #bfdbfe;
+      }
+
+      .tool-btn.danger {
+        background: #4a1f2a;
+        color: #fecdd3;
+      }
+
       #editorTitle,
       #editorContent {
         color: #f9fafb;
@@ -463,7 +506,11 @@
     <section class="editor">
       <div class="editor-topbar">
         <button id="mobileBackBtn" type="button">← 筆記列表</button>
-        <div id="saveStatus"></div>
+        <div class="editor-tools">
+          <button id="pinBtn" class="tool-btn" type="button" style="display:none;">📌 置頂</button>
+          <button id="deleteBtn" class="tool-btn danger" type="button" style="display:none;">刪除</button>
+          <div id="saveStatus"></div>
+        </div>
       </div>
 
       <div id="editorBody" class="editor-body">
@@ -501,6 +548,8 @@
     const notesListEl = document.getElementById("notesList");
     const saveStatusEl = document.getElementById("saveStatus");
     const mobileBackBtn = document.getElementById("mobileBackBtn");
+    const pinBtn = document.getElementById("pinBtn");
+    const deleteBtn = document.getElementById("deleteBtn");
     const editorPlaceholder = document.getElementById("editorPlaceholder");
     const editorFields = document.getElementById("editorFields");
     const editorTitle = document.getElementById("editorTitle");
@@ -522,6 +571,26 @@
 
     function currentNote() {
       return notes.find(note => note.id === selectedNoteId) ?? null;
+    }
+
+    function sortNotes() {
+      notes.sort((a, b) => {
+        if (!!a.is_pinned !== !!b.is_pinned) return a.is_pinned ? -1 : 1;
+        return new Date(b.updated_at) - new Date(a.updated_at);
+      });
+    }
+
+    function updateEditorTools(note) {
+      if (!note) {
+        pinBtn.style.display = "none";
+        deleteBtn.style.display = "none";
+        return;
+      }
+
+      pinBtn.style.display = "inline-block";
+      deleteBtn.style.display = "inline-block";
+      pinBtn.classList.toggle("active", !!note.is_pinned);
+      pinBtn.textContent = note.is_pinned ? "📌 已置頂" : "📌 置頂";
     }
 
     function showLoggedOut(message = "") {
@@ -550,6 +619,8 @@
 
       notesListEl.innerHTML = "";
 
+      notesStatusEl.textContent = q ? `${filtered.length} 篇符合` : "";
+
       if (!filtered.length) {
         notesListEl.innerHTML = '<div class="empty-list">沒有符合的筆記</div>';
         return;
@@ -561,7 +632,7 @@
 
         const title = document.createElement("div");
         title.className = "note-title";
-        title.textContent = note.title?.trim() || "未命名筆記";
+        title.textContent = (note.is_pinned ? "📌 " : "") + (note.title?.trim() || "未命名筆記");
 
         const preview = document.createElement("div");
         preview.className = "note-preview";
@@ -582,6 +653,7 @@
         editorPlaceholder.style.display = "grid";
         editorFields.style.display = "none";
         saveStatusEl.textContent = "";
+        updateEditorTools(null);
         return;
       }
 
@@ -590,6 +662,7 @@
       editorTitle.value = note.title ?? "";
       editorContent.value = note.content ?? "";
       saveStatusEl.textContent = "已載入";
+      updateEditorTools(note);
     }
 
     async function selectNote(id) {
@@ -624,6 +697,7 @@
       }
 
       notes = data ?? [];
+      sortNotes();
       notesStatusEl.textContent = "";
 
       if (preferredId && notes.some(n => n.id === preferredId)) {
@@ -667,8 +741,9 @@
       const index = notes.findIndex(n => n.id === data.id);
       if (index >= 0) notes[index] = data;
 
-      notes.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      sortNotes();
       renderNotes();
+      updateEditorTools(currentNote());
       saveStatusEl.textContent = "已自動儲存";
     }
 
@@ -739,6 +814,7 @@
 
       notesStatusEl.textContent = "";
       notes.unshift(data);
+      sortNotes();
       selectedNoteId = data.id;
       renderNotes();
       showEditor(data);
@@ -751,6 +827,73 @@
     });
 
     searchInput.addEventListener("input", renderNotes);
+
+    pinBtn.addEventListener("click", async () => {
+      await flushPendingSave();
+      const note = currentNote();
+      if (!note) return;
+
+      pinBtn.disabled = true;
+      saveStatusEl.textContent = note.is_pinned ? "取消置頂中..." : "置頂中...";
+
+      const { data, error } = await supabase
+        .from("notes")
+        .update({ is_pinned: !note.is_pinned })
+        .eq("id", note.id)
+        .select("id, title, content, is_pinned, created_at, updated_at")
+        .single();
+
+      pinBtn.disabled = false;
+
+      if (error) {
+        saveStatusEl.textContent = "置頂更新失敗：" + error.message;
+        return;
+      }
+
+      const index = notes.findIndex(n => n.id === data.id);
+      if (index >= 0) notes[index] = data;
+      sortNotes();
+      renderNotes();
+      updateEditorTools(data);
+      saveStatusEl.textContent = data.is_pinned ? "已置頂" : "已取消置頂";
+    });
+
+    deleteBtn.addEventListener("click", async () => {
+      await flushPendingSave();
+      const note = currentNote();
+      if (!note) return;
+
+      const label = note.title?.trim() || "未命名筆記";
+      if (!window.confirm(`確定要刪除「${label}」？此動作無法復原。`)) return;
+
+      deleteBtn.disabled = true;
+      saveStatusEl.textContent = "刪除中...";
+
+      const { error } = await supabase
+        .from("notes")
+        .delete()
+        .eq("id", note.id);
+
+      deleteBtn.disabled = false;
+
+      if (error) {
+        saveStatusEl.textContent = "刪除失敗：" + error.message;
+        return;
+      }
+
+      notes = notes.filter(n => n.id !== note.id);
+      sortNotes();
+
+      if (window.innerWidth <= 760) {
+        selectedNoteId = null;
+        appShell.classList.remove("mobile-editor-open");
+      } else {
+        selectedNoteId = notes[0]?.id ?? null;
+      }
+
+      renderNotes();
+      showEditor(currentNote());
+    });
 
     editorTitle.addEventListener("input", scheduleSave);
     editorContent.addEventListener("input", scheduleSave);
