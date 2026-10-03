@@ -6,169 +6,423 @@
   <title>Simplenote Plus</title>
   <style>
     :root {
-      color-scheme: light dark;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1f2937;
+      background: #f5f7fb;
     }
 
     * { box-sizing: border-box; }
 
+    html, body { margin: 0; min-height: 100%; }
+
     body {
-      margin: 0;
+      min-height: 100vh;
+      background: #f5f7fb;
+    }
+
+    button, input, textarea { font: inherit; }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    #loginPanel {
       min-height: 100vh;
       display: grid;
       place-items: center;
-      background: #f6f7f9;
-      color: #1f2937;
+      padding: 24px;
     }
 
-    .card {
-      width: min(94vw, 820px);
+    .login-card {
+      width: min(92vw, 420px);
       background: white;
       border: 1px solid #e5e7eb;
-      border-radius: 16px;
-      padding: 28px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.06);
+      border-radius: 18px;
+      padding: 30px;
+      box-shadow: 0 12px 32px rgba(0,0,0,.06);
     }
 
-    h1 { margin: 0 0 8px; font-size: 28px; }
-    h2 { margin: 28px 0 10px; font-size: 20px; }
+    .login-card h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
 
-    .sub, .email, #status, #notesStatus, #saveStatus, .note-meta, .empty {
+    .muted {
       color: #6b7280;
     }
 
-    .sub { margin: 0 0 24px; font-size: 14px; }
-    .email { margin-top: 4px; font-size: 14px; word-break: break-word; }
-
     label {
       display: block;
-      margin: 14px 0 6px;
+      margin: 16px 0 6px;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 650;
     }
 
-    input, textarea {
+    .login-card input {
       width: 100%;
-      padding: 12px 14px;
       border: 1px solid #d1d5db;
       border-radius: 10px;
-      font: inherit;
+      padding: 12px 14px;
       background: white;
       color: #111827;
     }
 
-    textarea {
-      min-height: 340px;
-      resize: vertical;
-      line-height: 1.55;
+    .primary-btn {
+      background: #2f66e9;
+      color: white;
+      border-radius: 10px;
+      padding: 11px 15px;
+      font-weight: 700;
+    }
+
+    .dark-btn {
+      background: #111827;
+      color: white;
+      border-radius: 10px;
+      padding: 11px 15px;
+      font-weight: 700;
+    }
+
+    #loginForm .primary-btn {
+      width: 100%;
+      margin-top: 18px;
+    }
+
+    #status {
+      min-height: 20px;
+      margin-top: 12px;
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    #appShell {
+      display: none;
+      height: 100vh;
+      background: white;
+    }
+
+    .sidebar {
+      width: 330px;
+      min-width: 280px;
+      border-right: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      background: #fbfcfe;
+    }
+
+    .sidebar-header {
+      padding: 18px 16px 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .brand {
+      font-size: 21px;
+      font-weight: 800;
+    }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: #2f66e9;
+      color: white;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    .account-email {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #6b7280;
+      font-size: 13px;
+    }
+
+    .signout-link {
+      background: transparent;
+      color: #6b7280;
+      font-size: 13px;
+      padding: 4px;
+    }
+
+    .search-wrap {
+      padding: 12px 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    #searchInput {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: white;
+      color: #111827;
+      outline: none;
+    }
+
+    #searchInput:focus {
+      border-color: #7aa2ff;
+      box-shadow: 0 0 0 3px rgba(47,102,233,.10);
+    }
+
+    #notesStatus {
+      padding: 8px 14px 0;
+      min-height: 26px;
+      color: #6b7280;
+      font-size: 13px;
+    }
+
+    #notesList {
+      flex: 1;
+      overflow: auto;
+    }
+
+    .note-item {
+      padding: 14px 16px;
+      border-bottom: 1px solid #eceff3;
+      cursor: pointer;
+      background: transparent;
+    }
+
+    .note-item:hover {
+      background: #f1f5fb;
+    }
+
+    .note-item.active {
+      background: #eaf1ff;
+    }
+
+    .note-title {
+      font-weight: 750;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-preview {
+      margin-top: 5px;
+      font-size: 13px;
+      color: #6b7280;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-time {
+      margin-top: 5px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .empty-list {
+      padding: 28px 18px;
+      color: #6b7280;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .editor {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: white;
+    }
+
+    .editor-topbar {
+      min-height: 62px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 20px;
+    }
+
+    #mobileBackBtn {
+      display: none;
+      background: transparent;
+      color: #2f66e9;
+      font-weight: 700;
+      padding: 8px 0;
+    }
+
+    #saveStatus {
+      color: #6b7280;
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .editor-body {
+      flex: 1;
+      overflow: auto;
+      padding: 26px clamp(22px, 5vw, 72px) 50px;
     }
 
     #editorTitle {
-      font-size: 22px;
-      font-weight: 700;
-    }
-
-    button {
-      border: 0;
-      border-radius: 10px;
-      padding: 11px 16px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      background: #2563eb;
-      color: white;
-    }
-
-    button.secondary { background: #111827; }
-    button.ghost { background: #e5e7eb; color: #111827; }
-
-    button:disabled {
-      opacity: .6;
-      cursor: wait;
-    }
-
-    #loginForm button {
       width: 100%;
-      margin-top: 18px;
-      padding: 12px 14px;
-      font-size: 16px;
+      border: 0;
+      outline: 0;
+      font-size: clamp(26px, 3vw, 38px);
+      font-weight: 800;
+      color: #111827;
+      background: transparent;
+      padding: 0;
+      margin-bottom: 16px;
     }
 
-    .topbar {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
+    #editorContent {
+      width: 100%;
+      min-height: calc(100vh - 180px);
+      border: 0;
+      outline: 0;
+      resize: none;
+      background: transparent;
+      color: #1f2937;
+      font-size: 17px;
+      line-height: 1.65;
+      padding: 0;
     }
 
-    .topbar-actions, .editor-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+    .editor-placeholder {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      color: #9ca3af;
+      text-align: center;
+      padding: 24px;
     }
 
-    #status, #notesStatus, #saveStatus {
-      margin-top: 14px;
-      min-height: 20px;
-      font-size: 14px;
-      word-break: break-word;
-    }
+    @media (max-width: 760px) {
+      #appShell {
+        position: relative;
+        overflow: hidden;
+      }
 
-    #userPanel, #editorPanel { display: none; }
+      .sidebar, .editor {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        min-width: 0;
+        transition: transform .2s ease;
+      }
 
-    #notesList {
-      margin-top: 10px;
-      border-top: 1px solid #e5e7eb;
-    }
+      .sidebar {
+        transform: translateX(0);
+        z-index: 2;
+      }
 
-    .note-row {
-      padding: 14px 4px;
-      border-bottom: 1px solid #e5e7eb;
-      cursor: pointer;
-    }
+      .editor {
+        transform: translateX(100%);
+        z-index: 3;
+      }
 
-    .note-row:hover { background: rgba(127,127,127,.07); }
+      #appShell.mobile-editor-open .sidebar {
+        transform: translateX(-100%);
+      }
 
-    .note-title { font-weight: 700; }
+      #appShell.mobile-editor-open .editor {
+        transform: translateX(0);
+      }
 
-    .note-preview {
-      margin-top: 4px;
-      color: #6b7280;
-      font-size: 14px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+      #mobileBackBtn {
+        display: inline-block;
+      }
 
-    .note-meta { margin-top: 4px; font-size: 12px; }
-    .empty { padding: 26px 4px; text-align: center; }
+      .editor-topbar {
+        padding: 10px 16px;
+      }
 
-    .editor-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 18px;
-      flex-wrap: wrap;
+      .editor-body {
+        padding: 22px 18px 40px;
+      }
+
+      #editorContent {
+        min-height: calc(100vh - 170px);
+      }
     }
 
     @media (prefers-color-scheme: dark) {
-      body { background: #111827; color: #f9fafb; }
-      .card { background: #1f2937; border-color: #374151; }
-      input, textarea { background: #111827; border-color: #4b5563; color: #f9fafb; }
-      #notesList, .note-row { border-color: #374151; }
-      button.ghost { background: #374151; color: #f9fafb; }
-      .note-preview { color: #9ca3af; }
-      .sub, .email, #status, #notesStatus, #saveStatus, .note-meta, .empty { color: #9ca3af; }
+      :root { color: #f9fafb; background: #111827; }
+
+      body { background: #111827; }
+
+      .login-card,
+      #appShell,
+      .editor,
+      .sidebar {
+        background: #111827;
+        color: #f9fafb;
+      }
+
+      .sidebar {
+        background: #161f2d;
+      }
+
+      .login-card,
+      .sidebar,
+      .sidebar-header,
+      .search-wrap,
+      .editor-topbar,
+      .note-item {
+        border-color: #2f3a49;
+      }
+
+      .login-card input,
+      #searchInput {
+        background: #0f172a;
+        border-color: #475569;
+        color: #f9fafb;
+      }
+
+      .note-item:hover { background: #1d2939; }
+      .note-item.active { background: #20345c; }
+
+      #editorTitle,
+      #editorContent {
+        color: #f9fafb;
+      }
+
+      .muted,
+      .account-email,
+      .signout-link,
+      #status,
+      #notesStatus,
+      #saveStatus,
+      .note-preview {
+        color: #9ca3af;
+      }
+
+      .note-time,
+      .editor-placeholder {
+        color: #6b7280;
+      }
     }
   </style>
 </head>
 <body>
-  <main class="card">
-    <section id="loginPanel">
+  <section id="loginPanel">
+    <div class="login-card">
       <h1>Simplenote Plus</h1>
-      <p class="sub">使用你的 Email 與密碼登入</p>
+      <div class="muted">使用你的 Email 與密碼登入</div>
 
       <form id="loginForm">
         <label for="email">Email</label>
@@ -177,42 +431,54 @@
         <label for="password">Password</label>
         <input id="password" type="password" autocomplete="current-password" required />
 
-        <button type="submit">Sign in</button>
+        <button class="primary-btn" type="submit">Sign in</button>
       </form>
 
       <div id="status"></div>
-    </section>
+    </div>
+  </section>
 
-    <section id="userPanel">
-      <div class="topbar">
-        <div>
-          <h1>Simplenote Plus</h1>
-          <div class="email" id="currentEmail"></div>
+  <main id="appShell">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-row">
+          <div class="brand">Simplenote Plus</div>
+          <button id="newNoteBtn" class="icon-btn" type="button" title="新增筆記">＋</button>
         </div>
 
-        <div class="topbar-actions">
-          <button id="newNoteBtn" type="button">＋ New Note</button>
-          <button class="secondary" id="signOutBtn" type="button">Sign out</button>
+        <div class="account-row">
+          <div id="currentEmail" class="account-email"></div>
+          <button id="signOutBtn" class="signout-link" type="button">Sign out</button>
         </div>
       </div>
 
-      <h2>我的筆記</h2>
+      <div class="search-wrap">
+        <input id="searchInput" type="search" placeholder="搜尋筆記…" />
+      </div>
+
       <div id="notesStatus"></div>
       <div id="notesList"></div>
-    </section>
+    </aside>
 
-    <section id="editorPanel">
-      <div class="editor-header">
-        <button class="ghost" id="backBtn" type="button">← 回筆記列表</button>
-        <div class="editor-actions">
-          <button class="secondary" id="editorSignOutBtn" type="button">Sign out</button>
-        </div>
+    <section class="editor">
+      <div class="editor-topbar">
+        <button id="mobileBackBtn" type="button">← 筆記列表</button>
+        <div id="saveStatus"></div>
       </div>
 
-      <input id="editorTitle" type="text" placeholder="標題" />
-      <label for="editorContent">內容</label>
-      <textarea id="editorContent" placeholder="開始寫筆記…"></textarea>
-      <div id="saveStatus"></div>
+      <div id="editorBody" class="editor-body">
+        <div id="editorPlaceholder" class="editor-placeholder">
+          <div>
+            <div style="font-size:20px;font-weight:700;margin-bottom:8px;">選擇一篇筆記</div>
+            <div>或按左上角 ＋ 建立新筆記</div>
+          </div>
+        </div>
+
+        <div id="editorFields" style="display:none;">
+          <input id="editorTitle" type="text" placeholder="標題" />
+          <textarea id="editorContent" placeholder="開始寫筆記…"></textarea>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -221,32 +487,32 @@
 
     const SUPABASE_URL = "https://hsopdjksfetykjwhdpgp.supabase.co";
     const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_tr9b-wjvVaATe0_nnfu6Sw_dOux8m1h";
-
     const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
     const loginPanel = document.getElementById("loginPanel");
-    const userPanel = document.getElementById("userPanel");
-    const editorPanel = document.getElementById("editorPanel");
+    const appShell = document.getElementById("appShell");
     const loginForm = document.getElementById("loginForm");
     const statusEl = document.getElementById("status");
-    const notesStatusEl = document.getElementById("notesStatus");
-    const saveStatusEl = document.getElementById("saveStatus");
-    const notesListEl = document.getElementById("notesList");
     const currentEmail = document.getElementById("currentEmail");
-    const newNoteBtn = document.getElementById("newNoteBtn");
     const signOutBtn = document.getElementById("signOutBtn");
-    const editorSignOutBtn = document.getElementById("editorSignOutBtn");
-    const backBtn = document.getElementById("backBtn");
+    const newNoteBtn = document.getElementById("newNoteBtn");
+    const searchInput = document.getElementById("searchInput");
+    const notesStatusEl = document.getElementById("notesStatus");
+    const notesListEl = document.getElementById("notesList");
+    const saveStatusEl = document.getElementById("saveStatus");
+    const mobileBackBtn = document.getElementById("mobileBackBtn");
+    const editorPlaceholder = document.getElementById("editorPlaceholder");
+    const editorFields = document.getElementById("editorFields");
     const editorTitle = document.getElementById("editorTitle");
     const editorContent = document.getElementById("editorContent");
 
-    let currentNote = null;
+    let notes = [];
+    let selectedNoteId = null;
     let saveTimer = null;
 
     function formatDate(value) {
       if (!value) return "";
       return new Intl.DateTimeFormat("zh-TW", {
-        year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -254,35 +520,44 @@
       }).format(new Date(value));
     }
 
-    function showList() {
-      editorPanel.style.display = "none";
-      userPanel.style.display = "block";
-      currentNote = null;
+    function currentNote() {
+      return notes.find(note => note.id === selectedNoteId) ?? null;
+    }
+
+    function showLoggedOut(message = "") {
       clearTimeout(saveTimer);
+      notes = [];
+      selectedNoteId = null;
+      appShell.style.display = "none";
+      loginPanel.style.display = "grid";
+      statusEl.textContent = message;
     }
 
-    function openEditor(note) {
-      currentNote = note;
-      userPanel.style.display = "none";
-      editorPanel.style.display = "block";
-      editorTitle.value = note.title ?? "";
-      editorContent.value = note.content ?? "";
-      saveStatusEl.textContent = "已載入";
-      editorTitle.focus();
+    async function showLoggedIn(user) {
+      loginPanel.style.display = "none";
+      appShell.style.display = "flex";
+      currentEmail.textContent = user?.email ?? "";
+      await loadNotes();
     }
 
-    function renderNotes(notes) {
+    function renderNotes() {
+      const q = searchInput.value.trim().toLowerCase();
+      const filtered = notes.filter(note => {
+        if (!q) return true;
+        return (note.title ?? "").toLowerCase().includes(q) ||
+               (note.content ?? "").toLowerCase().includes(q);
+      });
+
       notesListEl.innerHTML = "";
 
-      if (!notes.length) {
-        notesListEl.innerHTML = '<div class="empty">目前尚無筆記</div>';
+      if (!filtered.length) {
+        notesListEl.innerHTML = '<div class="empty-list">沒有符合的筆記</div>';
         return;
       }
 
-      for (const note of notes) {
-        const row = document.createElement("div");
-        row.className = "note-row";
-        row.tabIndex = 0;
+      for (const note of filtered) {
+        const item = document.createElement("div");
+        item.className = "note-item" + (note.id === selectedNoteId ? " active" : "");
 
         const title = document.createElement("div");
         title.className = "note-title";
@@ -290,26 +565,51 @@
 
         const preview = document.createElement("div");
         preview.className = "note-preview";
-        preview.textContent = note.content?.trim() || "沒有內容";
+        preview.textContent = note.content?.replace(/\s+/g, " ").trim() || "沒有內容";
 
-        const meta = document.createElement("div");
-        meta.className = "note-meta";
-        meta.textContent = "最後更新：" + formatDate(note.updated_at);
+        const time = document.createElement("div");
+        time.className = "note-time";
+        time.textContent = formatDate(note.updated_at);
 
-        row.append(title, preview, meta);
-        row.addEventListener("click", () => openEditor(note));
-        row.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openEditor(note);
-          }
-        });
-
-        notesListEl.appendChild(row);
+        item.append(title, preview, time);
+        item.addEventListener("click", () => selectNote(note.id));
+        notesListEl.appendChild(item);
       }
     }
 
-    async function loadNotes() {
+    function showEditor(note) {
+      if (!note) {
+        editorPlaceholder.style.display = "grid";
+        editorFields.style.display = "none";
+        saveStatusEl.textContent = "";
+        return;
+      }
+
+      editorPlaceholder.style.display = "none";
+      editorFields.style.display = "block";
+      editorTitle.value = note.title ?? "";
+      editorContent.value = note.content ?? "";
+      saveStatusEl.textContent = "已載入";
+    }
+
+    async function selectNote(id) {
+      if (selectedNoteId === id) {
+        if (window.innerWidth <= 760) appShell.classList.add("mobile-editor-open");
+        return;
+      }
+
+      await flushPendingSave();
+
+      selectedNoteId = id;
+      renderNotes();
+      showEditor(currentNote());
+
+      if (window.innerWidth <= 760) {
+        appShell.classList.add("mobile-editor-open");
+      }
+    }
+
+    async function loadNotes(preferredId = null) {
       notesStatusEl.textContent = "讀取筆記中...";
 
       const { data, error } = await supabase
@@ -319,29 +619,43 @@
         .order("updated_at", { ascending: false });
 
       if (error) {
-        notesStatusEl.textContent = "讀取筆記失敗：" + error.message;
-        notesListEl.innerHTML = "";
+        notesStatusEl.textContent = "讀取失敗：" + error.message;
         return;
       }
 
+      notes = data ?? [];
       notesStatusEl.textContent = "";
-      renderNotes(data ?? []);
+
+      if (preferredId && notes.some(n => n.id === preferredId)) {
+        selectedNoteId = preferredId;
+      } else if (selectedNoteId && !notes.some(n => n.id === selectedNoteId)) {
+        selectedNoteId = null;
+      } else if (!selectedNoteId && notes.length && window.innerWidth > 760) {
+        selectedNoteId = notes[0].id;
+      }
+
+      renderNotes();
+      showEditor(currentNote());
     }
 
     async function saveCurrentNote() {
-      if (!currentNote) return;
+      const note = currentNote();
+      if (!note) return;
+
+      const newTitle = editorTitle.value;
+      const newContent = editorContent.value;
+      const updatedAt = new Date().toISOString();
 
       saveStatusEl.textContent = "儲存中...";
-      const updatedAt = new Date().toISOString();
 
       const { data, error } = await supabase
         .from("notes")
         .update({
-          title: editorTitle.value,
-          content: editorContent.value,
+          title: newTitle,
+          content: newContent,
           updated_at: updatedAt
         })
-        .eq("id", currentNote.id)
+        .eq("id", note.id)
         .select("id, title, content, is_pinned, created_at, updated_at")
         .single();
 
@@ -350,49 +664,39 @@
         return;
       }
 
-      currentNote = data;
-      saveStatusEl.textContent = "已自動儲存 " + formatDate(data.updated_at);
+      const index = notes.findIndex(n => n.id === data.id);
+      if (index >= 0) notes[index] = data;
+
+      notes.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      renderNotes();
+      saveStatusEl.textContent = "已自動儲存";
     }
 
     function scheduleSave() {
-      if (!currentNote) return;
+      if (!currentNote()) return;
       saveStatusEl.textContent = "尚未儲存...";
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(saveCurrentNote, 700);
+      saveTimer = setTimeout(async () => {
+        saveTimer = null;
+        await saveCurrentNote();
+      }, 700);
     }
 
-    async function showLoggedIn(user) {
-      loginPanel.style.display = "none";
-      editorPanel.style.display = "none";
-      userPanel.style.display = "block";
-      currentEmail.textContent = user?.email ?? "(unknown)";
-      await loadNotes();
-    }
-
-    function showLoggedOut(message = "") {
-      userPanel.style.display = "none";
-      editorPanel.style.display = "none";
-      loginPanel.style.display = "block";
-      notesListEl.innerHTML = "";
-      notesStatusEl.textContent = "";
-      saveStatusEl.textContent = "";
-      currentNote = null;
+    async function flushPendingSave() {
+      if (!saveTimer) return;
       clearTimeout(saveTimer);
-      statusEl.textContent = message;
+      saveTimer = null;
+      await saveCurrentNote();
     }
 
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      statusEl.textContent = "登入中...";
 
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
 
-      statusEl.textContent = "登入中...";
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
         statusEl.textContent = "登入失敗：" + error.message;
@@ -404,6 +708,7 @@
     });
 
     newNoteBtn.addEventListener("click", async () => {
+      await flushPendingSave();
       newNoteBtn.disabled = true;
       notesStatusEl.textContent = "建立新筆記中...";
 
@@ -419,42 +724,55 @@
         .from("notes")
         .insert({
           user_id: user.id,
-          title: "新筆記",
+          title: "",
           content: ""
         })
         .select("id, title, content, is_pinned, created_at, updated_at")
         .single();
 
+      newNoteBtn.disabled = false;
+
       if (error) {
-        notesStatusEl.textContent = "新增筆記失敗：" + error.message;
-        newNoteBtn.disabled = false;
+        notesStatusEl.textContent = "新增失敗：" + error.message;
         return;
       }
 
       notesStatusEl.textContent = "";
-      newNoteBtn.disabled = false;
-      openEditor(data);
+      notes.unshift(data);
+      selectedNoteId = data.id;
+      renderNotes();
+      showEditor(data);
+
+      if (window.innerWidth <= 760) {
+        appShell.classList.add("mobile-editor-open");
+      }
+
+      editorTitle.focus();
     });
+
+    searchInput.addEventListener("input", renderNotes);
 
     editorTitle.addEventListener("input", scheduleSave);
     editorContent.addEventListener("input", scheduleSave);
 
-    backBtn.addEventListener("click", async () => {
-      clearTimeout(saveTimer);
-      await saveCurrentNote();
-      showList();
-      await loadNotes();
+    mobileBackBtn.addEventListener("click", async () => {
+      await flushPendingSave();
+      appShell.classList.remove("mobile-editor-open");
+      renderNotes();
     });
 
-    async function signOut() {
-      clearTimeout(saveTimer);
-      if (currentNote) await saveCurrentNote();
+    signOutBtn.addEventListener("click", async () => {
+      await flushPendingSave();
       await supabase.auth.signOut();
       showLoggedOut("已登出。");
-    }
+    });
 
-    signOutBtn.addEventListener("click", signOut);
-    editorSignOutBtn.addEventListener("click", signOut);
+    window.addEventListener("beforeunload", () => {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+    });
 
     const { data: { session } } = await supabase.auth.getSession();
 
