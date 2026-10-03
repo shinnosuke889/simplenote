@@ -24,7 +24,7 @@
     }
 
     .card {
-      width: min(92vw, 380px);
+      width: min(94vw, 720px);
       background: white;
       border: 1px solid #e5e7eb;
       border-radius: 16px;
@@ -35,6 +35,11 @@
     h1 {
       margin: 0 0 8px;
       font-size: 28px;
+    }
+
+    h2 {
+      margin: 28px 0 10px;
+      font-size: 20px;
     }
 
     .sub {
@@ -61,23 +66,55 @@
     }
 
     button {
-      width: 100%;
-      margin-top: 18px;
-      padding: 12px 14px;
       border: 0;
       border-radius: 10px;
-      font-size: 16px;
+      padding: 11px 16px;
+      font-size: 15px;
       font-weight: 700;
       cursor: pointer;
       background: #2563eb;
       color: white;
     }
 
+    button:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+
+    #loginForm button {
+      width: 100%;
+      margin-top: 18px;
+      padding: 12px 14px;
+      font-size: 16px;
+    }
+
     button.secondary {
       background: #111827;
     }
 
-    #status {
+    .topbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .email {
+      margin-top: 4px;
+      font-size: 14px;
+      color: #6b7280;
+      word-break: break-word;
+    }
+
+    #status,
+    #notesStatus {
       margin-top: 14px;
       min-height: 20px;
       font-size: 14px;
@@ -89,10 +126,30 @@
       display: none;
     }
 
-    .email {
-      margin: 12px 0 0;
-      font-weight: 600;
-      word-break: break-word;
+    #notesList {
+      margin-top: 10px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .note-row {
+      padding: 14px 4px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .note-title {
+      font-weight: 700;
+    }
+
+    .note-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .empty {
+      padding: 26px 4px;
+      color: #6b7280;
+      text-align: center;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -112,8 +169,18 @@
         color: #f9fafb;
       }
 
-      .sub, #status {
+      .sub,
+      .email,
+      #status,
+      #notesStatus,
+      .note-meta,
+      .empty {
         color: #9ca3af;
+      }
+
+      #notesList,
+      .note-row {
+        border-color: #374151;
       }
     }
   </style>
@@ -138,11 +205,21 @@
     </section>
 
     <section id="userPanel">
-      <h1>登入成功</h1>
-      <p class="sub">Supabase Authentication 已連線。</p>
-      <div>目前帳號：</div>
-      <div class="email" id="currentEmail"></div>
-      <button class="secondary" id="signOutBtn" type="button">Sign out</button>
+      <div class="topbar">
+        <div>
+          <h1>Simplenote Plus</h1>
+          <div class="email" id="currentEmail"></div>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="newNoteBtn" type="button">＋ New Note</button>
+          <button class="secondary" id="signOutBtn" type="button">Sign out</button>
+        </div>
+      </div>
+
+      <h2>我的筆記</h2>
+      <div id="notesStatus"></div>
+      <div id="notesList"></div>
     </section>
   </main>
 
@@ -158,18 +235,79 @@
     const userPanel = document.getElementById("userPanel");
     const loginForm = document.getElementById("loginForm");
     const statusEl = document.getElementById("status");
+    const notesStatusEl = document.getElementById("notesStatus");
+    const notesListEl = document.getElementById("notesList");
     const currentEmail = document.getElementById("currentEmail");
+    const newNoteBtn = document.getElementById("newNoteBtn");
     const signOutBtn = document.getElementById("signOutBtn");
 
-    function showLoggedIn(user) {
+    function formatDate(value) {
+      if (!value) return "";
+      return new Intl.DateTimeFormat("zh-TW", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date(value));
+    }
+
+    function renderNotes(notes) {
+      notesListEl.innerHTML = "";
+
+      if (!notes.length) {
+        notesListEl.innerHTML = '<div class="empty">目前尚無筆記</div>';
+        return;
+      }
+
+      for (const note of notes) {
+        const row = document.createElement("div");
+        row.className = "note-row";
+
+        const title = document.createElement("div");
+        title.className = "note-title";
+        title.textContent = note.title?.trim() || "未命名筆記";
+
+        const meta = document.createElement("div");
+        meta.className = "note-meta";
+        meta.textContent = "最後更新：" + formatDate(note.updated_at);
+
+        row.append(title, meta);
+        notesListEl.appendChild(row);
+      }
+    }
+
+    async function loadNotes() {
+      notesStatusEl.textContent = "讀取筆記中...";
+
+      const { data, error } = await supabase
+        .from("notes")
+        .select("id, title, content, is_pinned, created_at, updated_at")
+        .order("is_pinned", { ascending: false })
+        .order("updated_at", { ascending: false });
+
+      if (error) {
+        notesStatusEl.textContent = "讀取筆記失敗：" + error.message;
+        notesListEl.innerHTML = "";
+        return;
+      }
+
+      notesStatusEl.textContent = "";
+      renderNotes(data ?? []);
+    }
+
+    async function showLoggedIn(user) {
       loginPanel.style.display = "none";
       userPanel.style.display = "block";
       currentEmail.textContent = user?.email ?? "(unknown)";
+      await loadNotes();
     }
 
     function showLoggedOut(message = "") {
       userPanel.style.display = "none";
       loginPanel.style.display = "block";
+      notesListEl.innerHTML = "";
+      notesStatusEl.textContent = "";
       statusEl.textContent = message;
     }
 
@@ -191,7 +329,38 @@
         return;
       }
 
-      showLoggedIn(data.user);
+      statusEl.textContent = "";
+      await showLoggedIn(data.user);
+    });
+
+    newNoteBtn.addEventListener("click", async () => {
+      newNoteBtn.disabled = true;
+      notesStatusEl.textContent = "建立新筆記中...";
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        notesStatusEl.textContent = "找不到登入使用者，請重新登入。";
+        newNoteBtn.disabled = false;
+        return;
+      }
+
+      const { error } = await supabase
+        .from("notes")
+        .insert({
+          user_id: user.id,
+          title: "新筆記",
+          content: ""
+        });
+
+      if (error) {
+        notesStatusEl.textContent = "新增筆記失敗：" + error.message;
+        newNoteBtn.disabled = false;
+        return;
+      }
+
+      await loadNotes();
+      newNoteBtn.disabled = false;
     });
 
     signOutBtn.addEventListener("click", async () => {
@@ -202,16 +371,14 @@
     const { data: { session } } = await supabase.auth.getSession();
 
     if (session?.user) {
-      showLoggedIn(session.user);
+      await showLoggedIn(session.user);
     } else {
       showLoggedOut();
     }
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        showLoggedIn(session.user);
-      } else {
-        showLoggedOut();
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session?.user) {
+        showLoggedOut(event === "SIGNED_OUT" ? "已登出。" : "");
       }
     });
   </script>
