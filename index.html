@@ -668,13 +668,51 @@
       return Array.from(template.content.childNodes).map(serializeRichNode).join("");
     }
 
+    function decodeHtmlEntities(value = "") {
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = value;
+      return textarea.value;
+    }
+
+    function normalizeStoredContent(content = "") {
+      let current = content ?? "";
+
+      // 修復舊分頁/舊版本曾把 rich HTML 當純文字再存回資料庫的情況。
+      // 最多拆 4 層，避免異常資料造成無限迴圈。
+      for (let i = 0; i < 4; i++) {
+        if (!current.startsWith(RICH_PREFIX)) return current;
+
+        const inner = current.slice(RICH_PREFIX.length);
+        const template = document.createElement("template");
+        template.innerHTML = inner;
+
+        const visibleText = (template.content.textContent ?? "").trimStart();
+        if (visibleText.startsWith(RICH_PREFIX)) {
+          current = visibleText;
+          continue;
+        }
+
+        const decoded = decodeHtmlEntities(inner).trimStart();
+        if (decoded.startsWith(RICH_PREFIX)) {
+          current = decoded;
+          continue;
+        }
+
+        return current;
+      }
+
+      return current;
+    }
+
     function storedContentToHtml(content = "") {
-      if (content.startsWith(RICH_PREFIX)) {
-        return sanitizeRichHtml(content.slice(RICH_PREFIX.length));
+      const normalized = normalizeStoredContent(content);
+
+      if (normalized.startsWith(RICH_PREFIX)) {
+        return sanitizeRichHtml(normalized.slice(RICH_PREFIX.length));
       }
 
       // 舊版純文字筆記相容：安全 escape 後，自動把 URL 變成連結。
-      return linkifyPlainText(content).replaceAll("\n", "<br>");
+      return linkifyPlainText(normalized).replaceAll("\n", "<br>");
     }
 
     function serializeEditorContent() {
@@ -683,10 +721,11 @@
     }
 
     function plainTextFromStoredContent(content = "") {
-      if (!content.startsWith(RICH_PREFIX)) return content;
+      const normalized = normalizeStoredContent(content);
+      if (!normalized.startsWith(RICH_PREFIX)) return normalized;
 
       const template = document.createElement("template");
-      template.innerHTML = sanitizeRichHtml(content.slice(RICH_PREFIX.length));
+      template.innerHTML = sanitizeRichHtml(normalized.slice(RICH_PREFIX.length));
 
       function textOf(node) {
         if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? "";
@@ -904,7 +943,30 @@
         return;
       }
 
-      notes = data ?? [];
+      const repairs = [];
+      notes = (data ?? []).map(note => {
+        const normalized = normalizeStoredContent(note.content ?? "");
+
+        if (normalized !== (note.content ?? "")) {
+          repairs.push({ id: note.id, content: normalized });
+          return { ...note, content: normalized };
+        }
+
+        return note;
+      });
+
+      // 若之前曾被舊版頁面把 rich HTML 當成文字存回，這裡會自動修回正常格式。
+      if (repairs.length) {
+        Promise.all(
+          repairs.map(item =>
+            supabase
+              .from("notes")
+              .update({ content: item.content })
+              .eq("id", item.id)
+          )
+        ).catch(() => {});
+      }
+
       sortNotes();
       notesStatusEl.textContent = "";
 
