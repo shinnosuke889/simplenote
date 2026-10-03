@@ -10,9 +10,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -24,7 +22,7 @@
     }
 
     .card {
-      width: min(94vw, 720px);
+      width: min(94vw, 820px);
       background: white;
       border: 1px solid #e5e7eb;
       border-radius: 16px;
@@ -32,21 +30,15 @@
       box-shadow: 0 10px 30px rgba(0,0,0,.06);
     }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 28px;
-    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 28px 0 10px; font-size: 20px; }
 
-    h2 {
-      margin: 28px 0 10px;
-      font-size: 20px;
-    }
-
-    .sub {
-      margin: 0 0 24px;
+    .sub, .email, #status, #notesStatus, #saveStatus, .note-meta, .empty {
       color: #6b7280;
-      font-size: 14px;
     }
+
+    .sub { margin: 0 0 24px; font-size: 14px; }
+    .email { margin-top: 4px; font-size: 14px; word-break: break-word; }
 
     label {
       display: block;
@@ -55,14 +47,25 @@
       font-weight: 600;
     }
 
-    input {
+    input, textarea {
       width: 100%;
       padding: 12px 14px;
       border: 1px solid #d1d5db;
       border-radius: 10px;
-      font-size: 16px;
+      font: inherit;
       background: white;
       color: #111827;
+    }
+
+    textarea {
+      min-height: 340px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    #editorTitle {
+      font-size: 22px;
+      font-weight: 700;
     }
 
     button {
@@ -76,6 +79,9 @@
       color: white;
     }
 
+    button.secondary { background: #111827; }
+    button.ghost { background: #e5e7eb; color: #111827; }
+
     button:disabled {
       opacity: .6;
       cursor: wait;
@@ -88,10 +94,6 @@
       font-size: 16px;
     }
 
-    button.secondary {
-      background: #111827;
-    }
-
     .topbar {
       display: flex;
       gap: 12px;
@@ -100,31 +102,20 @@
       flex-wrap: wrap;
     }
 
-    .topbar-actions {
+    .topbar-actions, .editor-actions {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
     }
 
-    .email {
-      margin-top: 4px;
-      font-size: 14px;
-      color: #6b7280;
-      word-break: break-word;
-    }
-
-    #status,
-    #notesStatus {
+    #status, #notesStatus, #saveStatus {
       margin-top: 14px;
       min-height: 20px;
       font-size: 14px;
-      color: #6b7280;
       word-break: break-word;
     }
 
-    #userPanel {
-      display: none;
-    }
+    #userPanel, #editorPanel { display: none; }
 
     #notesList {
       margin-top: 10px;
@@ -134,54 +125,42 @@
     .note-row {
       padding: 14px 4px;
       border-bottom: 1px solid #e5e7eb;
+      cursor: pointer;
     }
 
-    .note-title {
-      font-weight: 700;
-    }
+    .note-row:hover { background: rgba(127,127,127,.07); }
 
-    .note-meta {
+    .note-title { font-weight: 700; }
+
+    .note-preview {
       margin-top: 4px;
-      font-size: 12px;
       color: #6b7280;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .empty {
-      padding: 26px 4px;
-      color: #6b7280;
-      text-align: center;
+    .note-meta { margin-top: 4px; font-size: 12px; }
+    .empty { padding: 26px 4px; text-align: center; }
+
+    .editor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
     }
 
     @media (prefers-color-scheme: dark) {
-      body {
-        background: #111827;
-        color: #f9fafb;
-      }
-
-      .card {
-        background: #1f2937;
-        border-color: #374151;
-      }
-
-      input {
-        background: #111827;
-        border-color: #4b5563;
-        color: #f9fafb;
-      }
-
-      .sub,
-      .email,
-      #status,
-      #notesStatus,
-      .note-meta,
-      .empty {
-        color: #9ca3af;
-      }
-
-      #notesList,
-      .note-row {
-        border-color: #374151;
-      }
+      body { background: #111827; color: #f9fafb; }
+      .card { background: #1f2937; border-color: #374151; }
+      input, textarea { background: #111827; border-color: #4b5563; color: #f9fafb; }
+      #notesList, .note-row { border-color: #374151; }
+      button.ghost { background: #374151; color: #f9fafb; }
+      .note-preview { color: #9ca3af; }
+      .sub, .email, #status, #notesStatus, #saveStatus, .note-meta, .empty { color: #9ca3af; }
     }
   </style>
 </head>
@@ -221,6 +200,20 @@
       <div id="notesStatus"></div>
       <div id="notesList"></div>
     </section>
+
+    <section id="editorPanel">
+      <div class="editor-header">
+        <button class="ghost" id="backBtn" type="button">← 回筆記列表</button>
+        <div class="editor-actions">
+          <button class="secondary" id="editorSignOutBtn" type="button">Sign out</button>
+        </div>
+      </div>
+
+      <input id="editorTitle" type="text" placeholder="標題" />
+      <label for="editorContent">內容</label>
+      <textarea id="editorContent" placeholder="開始寫筆記…"></textarea>
+      <div id="saveStatus"></div>
+    </section>
   </main>
 
   <script type="module">
@@ -233,13 +226,22 @@
 
     const loginPanel = document.getElementById("loginPanel");
     const userPanel = document.getElementById("userPanel");
+    const editorPanel = document.getElementById("editorPanel");
     const loginForm = document.getElementById("loginForm");
     const statusEl = document.getElementById("status");
     const notesStatusEl = document.getElementById("notesStatus");
+    const saveStatusEl = document.getElementById("saveStatus");
     const notesListEl = document.getElementById("notesList");
     const currentEmail = document.getElementById("currentEmail");
     const newNoteBtn = document.getElementById("newNoteBtn");
     const signOutBtn = document.getElementById("signOutBtn");
+    const editorSignOutBtn = document.getElementById("editorSignOutBtn");
+    const backBtn = document.getElementById("backBtn");
+    const editorTitle = document.getElementById("editorTitle");
+    const editorContent = document.getElementById("editorContent");
+
+    let currentNote = null;
+    let saveTimer = null;
 
     function formatDate(value) {
       if (!value) return "";
@@ -250,6 +252,23 @@
         hour: "2-digit",
         minute: "2-digit"
       }).format(new Date(value));
+    }
+
+    function showList() {
+      editorPanel.style.display = "none";
+      userPanel.style.display = "block";
+      currentNote = null;
+      clearTimeout(saveTimer);
+    }
+
+    function openEditor(note) {
+      currentNote = note;
+      userPanel.style.display = "none";
+      editorPanel.style.display = "block";
+      editorTitle.value = note.title ?? "";
+      editorContent.value = note.content ?? "";
+      saveStatusEl.textContent = "已載入";
+      editorTitle.focus();
     }
 
     function renderNotes(notes) {
@@ -263,16 +282,29 @@
       for (const note of notes) {
         const row = document.createElement("div");
         row.className = "note-row";
+        row.tabIndex = 0;
 
         const title = document.createElement("div");
         title.className = "note-title";
         title.textContent = note.title?.trim() || "未命名筆記";
 
+        const preview = document.createElement("div");
+        preview.className = "note-preview";
+        preview.textContent = note.content?.trim() || "沒有內容";
+
         const meta = document.createElement("div");
         meta.className = "note-meta";
         meta.textContent = "最後更新：" + formatDate(note.updated_at);
 
-        row.append(title, meta);
+        row.append(title, preview, meta);
+        row.addEventListener("click", () => openEditor(note));
+        row.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openEditor(note);
+          }
+        });
+
         notesListEl.appendChild(row);
       }
     }
@@ -296,8 +328,42 @@
       renderNotes(data ?? []);
     }
 
+    async function saveCurrentNote() {
+      if (!currentNote) return;
+
+      saveStatusEl.textContent = "儲存中...";
+      const updatedAt = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from("notes")
+        .update({
+          title: editorTitle.value,
+          content: editorContent.value,
+          updated_at: updatedAt
+        })
+        .eq("id", currentNote.id)
+        .select("id, title, content, is_pinned, created_at, updated_at")
+        .single();
+
+      if (error) {
+        saveStatusEl.textContent = "儲存失敗：" + error.message;
+        return;
+      }
+
+      currentNote = data;
+      saveStatusEl.textContent = "已自動儲存 " + formatDate(data.updated_at);
+    }
+
+    function scheduleSave() {
+      if (!currentNote) return;
+      saveStatusEl.textContent = "尚未儲存...";
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveCurrentNote, 700);
+    }
+
     async function showLoggedIn(user) {
       loginPanel.style.display = "none";
+      editorPanel.style.display = "none";
       userPanel.style.display = "block";
       currentEmail.textContent = user?.email ?? "(unknown)";
       await loadNotes();
@@ -305,9 +371,13 @@
 
     function showLoggedOut(message = "") {
       userPanel.style.display = "none";
+      editorPanel.style.display = "none";
       loginPanel.style.display = "block";
       notesListEl.innerHTML = "";
       notesStatusEl.textContent = "";
+      saveStatusEl.textContent = "";
+      currentNote = null;
+      clearTimeout(saveTimer);
       statusEl.textContent = message;
     }
 
@@ -345,13 +415,15 @@
         return;
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("notes")
         .insert({
           user_id: user.id,
           title: "新筆記",
           content: ""
-        });
+        })
+        .select("id, title, content, is_pinned, created_at, updated_at")
+        .single();
 
       if (error) {
         notesStatusEl.textContent = "新增筆記失敗：" + error.message;
@@ -359,14 +431,30 @@
         return;
       }
 
-      await loadNotes();
+      notesStatusEl.textContent = "";
       newNoteBtn.disabled = false;
+      openEditor(data);
     });
 
-    signOutBtn.addEventListener("click", async () => {
+    editorTitle.addEventListener("input", scheduleSave);
+    editorContent.addEventListener("input", scheduleSave);
+
+    backBtn.addEventListener("click", async () => {
+      clearTimeout(saveTimer);
+      await saveCurrentNote();
+      showList();
+      await loadNotes();
+    });
+
+    async function signOut() {
+      clearTimeout(saveTimer);
+      if (currentNote) await saveCurrentNote();
       await supabase.auth.signOut();
       showLoggedOut("已登出。");
-    });
+    }
+
+    signOutBtn.addEventListener("click", signOut);
+    editorSignOutBtn.addEventListener("click", signOut);
 
     const { data: { session } } = await supabase.auth.getSession();
 
