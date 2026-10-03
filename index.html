@@ -358,11 +358,13 @@
     }
 
     #editorContent img[data-size="small"] {
-      max-width: min(42%, 360px);
+      width: min(42%, 360px);
+      max-width: 100%;
     }
 
     #editorContent img[data-size="medium"] {
-      max-width: min(70%, 640px);
+      width: min(70%, 640px);
+      max-width: 100%;
     }
 
     #editorContent img[data-size="full"] {
@@ -1576,6 +1578,16 @@
         insertionRange = await uploadImageFile(file, insertionRange) ?? insertionRange;
       }
     });
+
+    // 點圖片控制列時，contenteditable 會先觸發 blur。
+    // 這裡先標記，避免 blur 重建 DOM，否則 selectedImage 會指向已被替換的舊節點。
+    imageControls.addEventListener("mousedown", () => {
+      skipNextEditorBlur = true;
+    });
+
+    imageControls.addEventListener("touchstart", () => {
+      skipNextEditorBlur = true;
+    }, { passive: true });
 
     imageSmallBtn.addEventListener("click", () => setSelectedImageSize("small"));
     imageMediumBtn.addEventListener("click", () => setSelectedImageSize("medium"));
