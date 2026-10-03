@@ -357,6 +357,41 @@
       opacity: .55;
     }
 
+    #editorContent img[data-size="small"] {
+      max-width: min(42%, 360px);
+    }
+
+    #editorContent img[data-size="medium"] {
+      max-width: min(70%, 640px);
+    }
+
+    #editorContent img[data-size="full"] {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    #editorContent img.image-selected {
+      outline: 3px solid #2f66e9;
+      outline-offset: 3px;
+    }
+
+    #imageControls {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    #imageControls.visible {
+      display: flex;
+    }
+
+    .image-control-label {
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     .editor-placeholder {
       height: 100%;
       display: grid;
@@ -551,6 +586,13 @@
       <div class="editor-topbar">
         <button id="mobileBackBtn" type="button">← 筆記列表</button>
         <div class="editor-tools">
+          <div id="imageControls">
+            <span class="image-control-label">圖片</span>
+            <button id="imageSmallBtn" class="tool-btn" type="button">小</button>
+            <button id="imageMediumBtn" class="tool-btn" type="button">中</button>
+            <button id="imageFullBtn" class="tool-btn" type="button">滿寬</button>
+            <button id="imageDeleteBtn" class="tool-btn danger" type="button">刪圖</button>
+          </div>
           <button id="imageBtn" class="tool-btn" type="button" style="display:none;" title="插入圖片">🖼️</button>
           <button id="pinBtn" class="tool-btn" type="button" style="display:none;">📌 置頂</button>
           <button id="deleteBtn" class="tool-btn danger" type="button" style="display:none;">刪除</button>
@@ -594,6 +636,11 @@
     const notesListEl = document.getElementById("notesList");
     const saveStatusEl = document.getElementById("saveStatus");
     const mobileBackBtn = document.getElementById("mobileBackBtn");
+    const imageControls = document.getElementById("imageControls");
+    const imageSmallBtn = document.getElementById("imageSmallBtn");
+    const imageMediumBtn = document.getElementById("imageMediumBtn");
+    const imageFullBtn = document.getElementById("imageFullBtn");
+    const imageDeleteBtn = document.getElementById("imageDeleteBtn");
     const imageBtn = document.getElementById("imageBtn");
     const imageInput = document.getElementById("imageInput");
     const pinBtn = document.getElementById("pinBtn");
@@ -613,6 +660,7 @@
     let refreshInProgress = false;
     let savedEditorRange = null;
     let skipNextEditorBlur = false;
+    let selectedImage = null;
 
     const RICH_PREFIX = "<!--sp-rich-v1-->";
     const MEDIA_BUCKET = "note-media";
@@ -725,14 +773,18 @@
       if (tag === "img") {
         const path = safeStoragePath(node.getAttribute("data-storage-path") ?? "");
         const alt = escapeHtml(node.getAttribute("alt") ?? "");
+        const size = ["small", "medium", "full"].includes(node.getAttribute("data-size"))
+          ? node.getAttribute("data-size")
+          : "";
+        const sizeAttr = size ? ` data-size="${size}"` : "";
 
         if (path) {
-          return `<img data-storage-path="${escapeHtml(path)}" alt="${alt}">`;
+          return `<img data-storage-path="${escapeHtml(path)}"${sizeAttr} alt="${alt}">`;
         }
 
         const src = safeHttpUrl(node.getAttribute("src") ?? "");
         if (!src) return "";
-        return `<img src="${escapeHtml(src)}" alt="${alt}">`;
+        return `<img src="${escapeHtml(src)}"${sizeAttr} alt="${alt}">`;
       }
 
       const children = Array.from(node.childNodes).map(serializeRichNode).join("");
@@ -984,6 +1036,7 @@
 
       const img = document.createElement("img");
       img.setAttribute("data-storage-path", path);
+      img.setAttribute("data-size", "medium");
       img.setAttribute("data-uploading", "true");
       img.alt = file.name || "圖片";
       img.contentEditable = "false";
@@ -1018,6 +1071,60 @@
         if (!!a.is_pinned !== !!b.is_pinned) return a.is_pinned ? -1 : 1;
         return new Date(b.updated_at) - new Date(a.updated_at);
       });
+    }
+
+    function clearImageSelection() {
+      if (selectedImage) {
+        selectedImage.classList.remove("image-selected");
+      }
+      selectedImage = null;
+      imageControls.classList.remove("visible");
+    }
+
+    function selectImage(img) {
+      clearImageSelection();
+      selectedImage = img;
+      selectedImage.classList.add("image-selected");
+      imageControls.classList.add("visible");
+
+      const size = img.getAttribute("data-size") || "medium";
+      imageSmallBtn.classList.toggle("active", size === "small");
+      imageMediumBtn.classList.toggle("active", size === "medium");
+      imageFullBtn.classList.toggle("active", size === "full");
+    }
+
+    function setSelectedImageSize(size) {
+      if (!selectedImage || !["small", "medium", "full"].includes(size)) return;
+      selectedImage.setAttribute("data-size", size);
+      selectImage(selectedImage);
+      scheduleSave();
+    }
+
+    function removeSelectedImage() {
+      if (!selectedImage) return;
+
+      const img = selectedImage;
+      const parent = img.parentElement;
+
+      clearImageSelection();
+
+      if (parent && parent.tagName === "DIV") {
+        const meaningfulChildren = Array.from(parent.childNodes).filter(node => {
+          if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue ?? "").trim() !== "";
+          if (node.nodeType !== Node.ELEMENT_NODE) return false;
+          return node.tagName.toLowerCase() !== "br";
+        });
+
+        if (meaningfulChildren.length === 1 && meaningfulChildren[0] === img) {
+          parent.remove();
+        } else {
+          img.remove();
+        }
+      } else {
+        img.remove();
+      }
+
+      scheduleSave();
     }
 
     function updateEditorTools(note) {
@@ -1103,6 +1210,8 @@
     }
 
     function showEditor(note) {
+      clearImageSelection();
+
       if (!note) {
         editorPlaceholder.style.display = "grid";
         editorFields.style.display = "none";
@@ -1468,6 +1577,11 @@
       }
     });
 
+    imageSmallBtn.addEventListener("click", () => setSelectedImageSize("small"));
+    imageMediumBtn.addEventListener("click", () => setSelectedImageSize("medium"));
+    imageFullBtn.addEventListener("click", () => setSelectedImageSize("full"));
+    imageDeleteBtn.addEventListener("click", removeSelectedImage);
+
     pinBtn.addEventListener("click", async () => {
       await flushPendingSave();
       const note = currentNote();
@@ -1575,6 +1689,11 @@
     editorContent.addEventListener("touchend", captureEditorRange);
 
     editorContent.addEventListener("keyup", (event) => {
+      if (event.key === "Escape") {
+        clearImageSelection();
+        return;
+      }
+
       if (event.key === " " || event.key === "Enter") {
         linkifyCurrentTextNode();
       }
@@ -1594,6 +1713,15 @@
     });
 
     editorContent.addEventListener("click", (event) => {
+      const image = event.target.closest?.("img");
+      if (image && editorContent.contains(image)) {
+        event.preventDefault();
+        selectImage(image);
+        return;
+      }
+
+      clearImageSelection();
+
       const link = event.target.closest?.("a");
       if (!link) return;
 
