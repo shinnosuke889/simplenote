@@ -558,6 +558,11 @@
     let notes = [];
     let selectedNoteId = null;
     let saveTimer = null;
+    let savePromise = null;
+    let editorDirty = false;
+    let realtimeChannel = null;
+    let currentUserId = null;
+    let refreshInProgress = false;
 
     function formatDate(value) {
       if (!value) return "";
@@ -593,10 +598,20 @@
       pinBtn.textContent = note.is_pinned ? "📌 已置頂" : "📌 置頂";
     }
 
+    function stopRealtime() {
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+    }
+
     function showLoggedOut(message = "") {
       clearTimeout(saveTimer);
+      stopRealtime();
       notes = [];
       selectedNoteId = null;
+      editorDirty = false;
+      currentUserId = null;
       appShell.style.display = "none";
       loginPanel.style.display = "grid";
       statusEl.textContent = message;
@@ -606,7 +621,9 @@
       loginPanel.style.display = "none";
       appShell.style.display = "flex";
       currentEmail.textContent = user?.email ?? "";
+      currentUserId = user?.id ?? null;
       await loadNotes();
+      startRealtime();
     }
 
     function renderNotes() {
@@ -661,6 +678,7 @@
       editorFields.style.display = "block";
       editorTitle.value = note.title ?? "";
       editorContent.value = note.content ?? "";
+      editorDirty = false;
       saveStatusEl.textContent = "已載入";
       updateEditorTools(note);
     }
@@ -714,41 +732,60 @@
 
     async function saveCurrentNote() {
       const note = currentNote();
-      if (!note) return;
+      if (!note || !editorDirty) return;
 
-      const newTitle = editorTitle.value;
-      const newContent = editorContent.value;
+      if (savePromise) {
+        await savePromise;
+        if (!editorDirty) return;
+      }
+
+      const noteId = note.id;
+      const titleSnapshot = editorTitle.value;
+      const contentSnapshot = editorContent.value;
       const updatedAt = new Date().toISOString();
 
       saveStatusEl.textContent = "儲存中...";
 
-      const { data, error } = await supabase
-        .from("notes")
-        .update({
-          title: newTitle,
-          content: newContent,
-          updated_at: updatedAt
-        })
-        .eq("id", note.id)
-        .select("id, title, content, is_pinned, created_at, updated_at")
-        .single();
+      savePromise = (async () => {
+        const { data, error } = await supabase
+          .from("notes")
+          .update({
+            title: titleSnapshot,
+            content: contentSnapshot,
+            updated_at: updatedAt
+          })
+          .eq("id", noteId)
+          .select("id, title, content, is_pinned, created_at, updated_at")
+          .single();
 
-      if (error) {
-        saveStatusEl.textContent = "儲存失敗：" + error.message;
-        return;
+        if (error) {
+          saveStatusEl.textContent = "儲存失敗：" + error.message;
+          return;
+        }
+
+        const index = notes.findIndex(n => n.id === data.id);
+        if (index >= 0) notes[index] = data;
+
+        editorDirty =
+          selectedNoteId === noteId &&
+          (editorTitle.value !== titleSnapshot || editorContent.value !== contentSnapshot);
+
+        sortNotes();
+        renderNotes();
+        updateEditorTools(currentNote());
+        saveStatusEl.textContent = editorDirty ? "尚未儲存..." : "已自動儲存";
+      })();
+
+      try {
+        await savePromise;
+      } finally {
+        savePromise = null;
       }
-
-      const index = notes.findIndex(n => n.id === data.id);
-      if (index >= 0) notes[index] = data;
-
-      sortNotes();
-      renderNotes();
-      updateEditorTools(currentNote());
-      saveStatusEl.textContent = "已自動儲存";
     }
 
     function scheduleSave() {
       if (!currentNote()) return;
+      editorDirty = true;
       saveStatusEl.textContent = "尚未儲存...";
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
@@ -758,10 +795,121 @@
     }
 
     async function flushPendingSave() {
-      if (!saveTimer) return;
-      clearTimeout(saveTimer);
-      saveTimer = null;
-      await saveCurrentNote();
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+
+      if (editorDirty) {
+        await saveCurrentNote();
+      } else if (savePromise) {
+        await savePromise;
+      }
+    }
+
+    function applyRealtimeChange(payload) {
+      const type = payload.eventType;
+
+      if (type === "INSERT") {
+        const incoming = payload.new;
+        if (!incoming?.id || notes.some(n => n.id === incoming.id)) return;
+        notes.push(incoming);
+        sortNotes();
+
+        if (!selectedNoteId && window.innerWidth > 760) {
+          selectedNoteId = incoming.id;
+          showEditor(incoming);
+        }
+
+        renderNotes();
+        return;
+      }
+
+      if (type === "UPDATE") {
+        const incoming = payload.new;
+        if (!incoming?.id) return;
+
+        const index = notes.findIndex(n => n.id === incoming.id);
+        if (index >= 0) {
+          notes[index] = incoming;
+        } else {
+          notes.push(incoming);
+        }
+
+        sortNotes();
+        renderNotes();
+
+        if (selectedNoteId === incoming.id && !editorDirty && !savePromise) {
+          editorTitle.value = incoming.title ?? "";
+          editorContent.value = incoming.content ?? "";
+          updateEditorTools(incoming);
+          saveStatusEl.textContent = "已同步";
+        }
+        return;
+      }
+
+      if (type === "DELETE") {
+        const deletedId = payload.old?.id;
+        if (!deletedId) return;
+
+        notes = notes.filter(n => n.id !== deletedId);
+
+        if (selectedNoteId === deletedId) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+          editorDirty = false;
+
+          if (window.innerWidth <= 760) {
+            selectedNoteId = null;
+            appShell.classList.remove("mobile-editor-open");
+          } else {
+            sortNotes();
+            selectedNoteId = notes[0]?.id ?? null;
+          }
+
+          showEditor(currentNote());
+        }
+
+        sortNotes();
+        renderNotes();
+      }
+    }
+
+    function startRealtime() {
+      stopRealtime();
+      if (!currentUserId) return;
+
+      realtimeChannel = supabase
+        .channel("notes-sync-" + currentUserId)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notes",
+            filter: `user_id=eq.${currentUserId}`
+          },
+          applyRealtimeChange
+        )
+        .subscribe();
+    }
+
+    async function refreshFromServer(reason = "") {
+      if (!currentUserId || refreshInProgress || document.hidden) return;
+
+      refreshInProgress = true;
+      const keepSelectedId = selectedNoteId;
+
+      try {
+        await flushPendingSave();
+        await loadNotes(keepSelectedId);
+
+        if (reason && currentNote()) {
+          saveStatusEl.textContent = "已同步";
+        }
+      } finally {
+        refreshInProgress = false;
+      }
     }
 
     loginForm.addEventListener("submit", async (event) => {
@@ -908,6 +1056,20 @@
       await flushPendingSave();
       await supabase.auth.signOut();
       showLoggedOut("已登出。");
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        refreshFromServer("foreground");
+      }
+    });
+
+    window.addEventListener("focus", () => {
+      refreshFromServer("focus");
+    });
+
+    window.addEventListener("online", () => {
+      refreshFromServer("online");
     });
 
     window.addEventListener("beforeunload", () => {
